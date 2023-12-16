@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import argparse
 import os
 import pickle
 import json
@@ -12,17 +13,44 @@ import hdbscan
 from typing import Dict
 import sklearn.metrics as mt
 
-MLFLOW_EXPERIMENT_NAME='CLUSTERING_tests_en_1'
-MLFLOW_URI='/mml/mlflow_orlica_train'
+# representation of non NNI mode
 NNI_DISABLED = 'STANDALONE'
+
+# random statte is fixed in NNI training
 RANDOM_STATE = None if nni.get_experiment_id() == NNI_DISABLED else 123
-TEXT_DATAFILE = "/mnt/workdata/_WORK_/customer_intent_clustering/data/20000-Utterances-Training-dataset-for-chatbots-virtual-assistant-Bitext-sample.csv"
-TEXT_FIELDNAME = "utterance"
-MODEL_PATH = '/mnt/Data2/pretrained_models/nlp_models/sentence/'
-MODEL_NAME = "all-mpnet-base-v2"
-EMBEDDINGS_PATH = "/mnt/workdata/_WORK_/customer_intent_clustering/temp/"
-LIMIT_DATA_FRACTION=1.0
-WANDB_EXPERIMENT = "CIC_working"
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+
+    # Add arguments for each key in the dictionary
+    parser.add_argument("--TEXT_DATAFILE",
+                        default="/mnt/workdata/_WORK_/customer_intent_clustering/data/20000-Utterances-Training-dataset-for-chatbots-virtual-assistant-Bitext-sample.csv")
+    parser.add_argument("--TEXT_FIELDNAME", default="utterance")
+    parser.add_argument("--GROUND_TRUTH_FIELDNAME", default="intent")
+    parser.add_argument("--EMBEDDINGS_PATH",
+                        default="/mnt/workdata/_WORK_/customer_intent_clustering/temp/")
+    parser.add_argument("--LIMIT_DATA_FRACTION", type=float, default=1.0)
+    parser.add_argument("--MODEL_PATH", default="/mnt/Data2/pretrained_models/nlp_models/sentence/")
+    parser.add_argument("--MODEL_NAME", default="all-mpnet-base-v2")
+    parser.add_argument("--WANDB_EXPERIMENT", default="CIC_working")
+
+    # Parse the command line arguments
+    args = parser.parse_args()
+
+    # Create a new dictionary and populate it with the parsed arguments
+    settings = {
+        "TEXT_DATAFILE": args.TEXT_DATAFILE,
+        "TEXT_FIELDNAME": args.TEXT_FIELDNAME,
+        "GROUND_TRUTH_FIELDNAME": args.GROUND_TRUTH_FIELDNAME,
+        "EMBEDDINGS_PATH": args.EMBEDDINGS_PATH,
+        "LIMIT_DATA_FRACTION": args.LIMIT_DATA_FRACTION,
+        "MODEL_PATH": args.MODEL_PATH,
+        "MODEL_NAME": args.MODEL_NAME,
+        "WANDB_EXPERIMENT": args.WANDB_EXPERIMENT
+    }
+
+    return settings
+
 def build_embeddings_dataset(
         text_datafile: str,
         text_fieldname: str,
@@ -123,7 +151,7 @@ def create_umap_projection(
     learning_rate: float,
     init: str,
     random_state: int,
-    ):
+    )-> (cuml.UMAP, np.ndarray):
     mapper = cuml.UMAP(
         n_neighbors=n_neighbors,
         n_components=n_components,
@@ -174,6 +202,8 @@ def assess_clustering_results(clusters_labels,
 
 
 if __name__ == '__main__':
+    run_settings = parse_arguments()
+    print(json.dumps(run_settings, indent=3))
     NNI_EXP_ID = nni.get_experiment_id()
     NNI_RUN_ID = nni.get_trial_id()
     NNI_SEQ_ID = nni.get_sequence_id()
@@ -182,26 +212,27 @@ if __name__ == '__main__':
         WANDB_RUN_NAME = f"CIC_{dt.datetime.now():%m%d%H%M%S}"
     else:
         WANDB_RUN_NAME = NNI_RUN_ID
-    EMBEDDINGS_DATA_FILENAME = os.path.join(EMBEDDINGS_PATH, f"embeds_{NNI_EXP_ID}_{MODEL_NAME}.pkl")
+    EMBEDDINGS_DATA_FILENAME = os.path.join(run_settings["EMBEDDINGS_PATH"],
+                                            f"embeds_{NNI_EXP_ID}_{run_settings['MODEL_NAME']}.pkl")
 
     params = define_params(NNI_EXP_ID)
     print("Parameters set:")
     print(json.dumps(params, indent=3))
 
     run_config = {**params,
-                  **{'model': MODEL_NAME}}
+                  **{'model': run_settings["MODEL_NAME"]}}
 
-    with wandb.init(project=WANDB_EXPERIMENT, name=WANDB_RUN_NAME, save_code=False,
+    with wandb.init(project=run_settings["WANDB_EXPERIMENT"], name=WANDB_RUN_NAME, save_code=False,
                     config =run_config) as run:
 
         # create embeddings
         embeds = build_embeddings_dataset(
-            text_datafile=TEXT_DATAFILE,
-            text_fieldname=TEXT_FIELDNAME,
-            model_path=MODEL_PATH,
-            model_filename=MODEL_NAME,
+            text_datafile=run_settings["TEXT_DATAFILE"],
+            text_fieldname=run_settings["TEXT_FIELDNAME"],
+            model_path=run_settings["MODEL_PATH"],
+            model_filename=run_settings["MODEL_NAME"],
             embeddings_output_filename=EMBEDDINGS_DATA_FILENAME,
-            limit_to_fraction=LIMIT_DATA_FRACTION)
+            limit_to_fraction=run_settings["LIMIT_DATA_FRACTION"])
         print(f'Embeddings data dimensionality: {embeds.shape}')
 
         # create projection
