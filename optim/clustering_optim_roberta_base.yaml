@@ -33,10 +33,10 @@ trialCommand: python clustering_optim.py
   --TEXT_FIELDNAME utterance
   --GROUND_TRUTH_FIELDNAME intent
   --MODEL_PATH /mnt/Data2/pretrained_models/nlp_models/sentence/en/ 
-  --MODEL_NAME roberta-large
+  --MODEL_NAME roberta-base
   --EMBEDDINGS_PATH /mnt/workdata/_WORK_/customer_intent_clustering/temp/
   --LIMIT_DATA_FRACTION 1.0
-  --WANDB_EXPERIMENT CIC_working_roberta_large
+  --WANDB_EXPERIMENT CIC_working_roberta_base
 trialGpuNumber: 1
 trialConcurrency: 1
 maxTrialNumber: 500

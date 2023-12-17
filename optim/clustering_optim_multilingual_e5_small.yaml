@@ -32,11 +32,11 @@ trialCommand: python clustering_optim.py
   --TEXT_DATAFILE /mnt/workdata/_WORK_/customer_intent_clustering/data/20000-Utterances-Training-dataset-for-chatbots-virtual-assistant-Bitext-sample.csv
   --TEXT_FIELDNAME utterance
   --GROUND_TRUTH_FIELDNAME intent
-  --MODEL_PATH /mnt/Data2/pretrained_models/nlp_models/sentence/en/ 
-  --MODEL_NAME roberta-large
+  --MODEL_PATH /mnt/Data2/pretrained_models/nlp_models/sentence/multi/ 
+  --MODEL_NAME multilingual-e5-small
   --EMBEDDINGS_PATH /mnt/workdata/_WORK_/customer_intent_clustering/temp/
   --LIMIT_DATA_FRACTION 1.0
-  --WANDB_EXPERIMENT CIC_working_roberta_large
+  --WANDB_EXPERIMENT CIC_working_e5_small
 trialGpuNumber: 1
 trialConcurrency: 1
 maxTrialNumber: 500
