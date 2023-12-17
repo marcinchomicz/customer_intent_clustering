@@ -28,7 +28,9 @@ searchSpace:
     _type: uniform
     _value: [0., 0.3]
 
-trialCommand: python clustering_optim.py
+trialCommand: python clustering_optim.py 
+  --MODEL_PATH /mnt/Data2/pretrained_models/nlp_models/sentence/en/ 
+  --MODEL_NAME roberta-large
 trialGpuNumber: 1
 trialConcurrency: 1
 maxTrialNumber: 500
