@@ -264,6 +264,36 @@ def assess_clustering_results(clusters_labels,
     return results
 
 
+def check_result_improvement(nni_port_number: int, current_result: float) -> bool:
+    """
+    Returns bool refering to current default metric improvement
+
+    It can be used to send only improved results to Wandb, changing the cooperation with wandb
+    in the following way:
+
+    # if not standalone run store NNI final metrics regardeless of its improvement
+    if NNI_EXP_ID != NNI_DISABLED:
+        nni_results={**{'default': results['validity_index']}}
+        nni.report_final_result(nni_results)
+        # store wandb data only if default metric has improved
+        if check_result_improvement(15010, current_result=nni_results['default']):
+            with wandb.init(project=run_settings["WANDB_EXPERIMENT"], name=WANDB_RUN_NAME,
+                            save_code=False,
+                            config=run_config) as run:
+                results['exp_duration']=(dt.datetime.now()-start).total_seconds()
+                wandb.log(results)
+
+    :param nni_port_number: number of prot of current NNI experiment
+    :param current_result: default metric value obtained
+    :return:
+    """
+    curr_exp = nni.Experiment.connect(port=nni_port_number)
+    metrics_val = curr_exp.get_job_metrics()
+    default_metric_values = [x[0].data['default'] for x in metrics_val.values()]
+    default_max_val = np.max(default_metric_values) if len(default_metric_values) > 0 else -9999
+    return current_result >= default_max_val
+
+
 if __name__ == '__main__':
     run_settings = parse_arguments()
     print(json.dumps(run_settings, indent=3))
