@@ -1,0 +1,50 @@
+searchSpace:
+  umap_n_components:
+    _type: quniform
+    _value: [10, 100, 1]
+  umap_n_neighbors:
+    _type: quniform
+    _value: [5, 50, 1]
+  umap_min_distance:
+    _type: quniform
+    _value: [0.05, 0.5, 0.001]
+  umap_spread:
+    _type: quniform
+    _value: [0.5, 1.5, 0.001]
+  umap_learning_rate:
+    _type: uniform
+    _value: [0.5, 1.5]
+
+  hdbs_min_cluster_size:
+    _type: quniform
+    _value: [20, 200, 1]
+  hdbs_min_samples:
+    _type: quniform
+    _value: [20, 100, 1]
+  hdbs_max_cluster_size:
+    _type: quniform
+    _value: [1000, 5000, 100]
+  hdbs_cluster_selection_epsilon:
+    _type: uniform
+    _value: [0., 0.3]
+
+trialCommand: python clustering_optim.py 
+  --TEXT_DATAFILE /mnt/workdata/_WORK_/customer_intent_clustering/data/20000-Utterances-Training-dataset-for-chatbots-virtual-assistant-Bitext-sample.csv
+  --TEXT_FIELDNAME utterance
+  --GROUND_TRUTH_FIELDNAME intent
+  --MODEL_PATH /mnt/Data2/pretrained_models/nlp_models/sentence/en/ 
+  --MODEL_NAME roberta-large
+  --EMBEDDINGS_PATH /mnt/workdata/_WORK_/customer_intent_clustering/temp/
+  --LIMIT_DATA_FRACTION 1.0
+  --WANDB_EXPERIMENT CIC_working
+trialGpuNumber: 1
+trialConcurrency: 1
+maxTrialNumber: 500
+tuner:
+  name: TPE
+  classArgs:
+    optimize_mode: maximize
+trainingService:
+  platform: local
+  useActiveGpu: True
+  maxTrialNumberPerGpu: 3
