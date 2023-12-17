@@ -10,7 +10,7 @@ import wandb
 import datetime as dt
 import cuml
 import hdbscan
-from typing import Dict
+from typing import Dict, Tuple, Optional
 import sklearn.metrics as mt
 
 # representation of non NNI mode
@@ -20,13 +20,20 @@ NNI_DISABLED = 'STANDALONE'
 RANDOM_STATE = None if nni.get_experiment_id() == NNI_DISABLED else 123
 
 def parse_arguments():
+    """
+    Parse command line arguments and return a dictionary of settings.
+
+    Returns:
+        dict: A dictionary containing the parsed arguments.
+    """
+
     parser = argparse.ArgumentParser()
 
     # Add arguments for each key in the dictionary
     parser.add_argument("--TEXT_DATAFILE",
                         default="/mnt/workdata/_WORK_/customer_intent_clustering/data/20000-Utterances-Training-dataset-for-chatbots-virtual-assistant-Bitext-sample.csv")
     parser.add_argument("--TEXT_FIELDNAME", default="utterance")
-    parser.add_argument("--GROUND_TRUTH_FIELDNAME", default="intent")
+    parser.add_argument("--GROUND_TRUTH_FIELDNAME", default=None)
     parser.add_argument("--EMBEDDINGS_PATH",
                         default="/mnt/workdata/_WORK_/customer_intent_clustering/temp/")
     parser.add_argument("--LIMIT_DATA_FRACTION", type=float, default=1.0)
@@ -51,35 +58,39 @@ def parse_arguments():
 
     return settings
 
+def load_source_data(
+    text_datafile: str,
+    text_column: str,
+    true_label_column: Optional[str] = None,
+    limit_to_fraction = 1.0,
+) -> Tuple[pd.Series, pd.Series]:
+    df = pd.read_csv(text_datafile)
+    if limit_to_fraction < 1.0:
+        df = df.sample(frac=limit_to_fraction, axis=0).reset_index(drop=True)
+    print(
+        f"The dataset contains {df.shape[0]} records")
+    return df[text_column], df[true_label_column] if true_label_column else None
+
 def build_embeddings_dataset(
-        text_datafile: str,
-        text_fieldname: str,
+        text_data: pd.Series,
         model_path: str,
         model_filename: str,
-        embeddings_output_filename: str,
-        limit_to_fraction=1.0) -> np.ndarray:
+        embeddings_output_filename: str) -> np.ndarray:
     """
     Check if embeddings file exists and creates one if it doesn't.
     If embeddings file is present loads it.
-
-    :param text_datafile: filename of source dataframe with text column to create embeddings for,
-    :param text_fieldname: the name of the text column,
+    :param text_data: texts to compute embeddings for
     :param model_path: the path to model used for embeddings computation,
     :param model_filename: the directory with mdoel files or model file
     :param embeddings_output_filename: the name of output file to store embeddings in
     :return: array of embeddings
     """
     if not os.path.isfile(embeddings_output_filename):
-        df = pd.read_csv(text_datafile)
-        if limit_to_fraction<1.0:
-            df=df.sample(frac=limit_to_fraction, axis=0).reset_index(drop=True)
-        print(
-            f"The dataset contains {df.shape[0]} short texts, assigned to {df['intent'].nunique()} intents, grouped into {df['category'].nunique()} categories")
         model = SentenceTransformer(
             model_name_or_path=os.path.join(model_path, model_filename)
         )
         embeds = model.encode(
-            sentences=df[text_fieldname],
+            sentences=text_data.values,
             batch_size=128,
             show_progress_bar=False,
             output_value='sentence_embedding',
@@ -97,6 +108,15 @@ def build_embeddings_dataset(
     return embeds
 
 def define_params(nni_mode: str):
+    """
+    Define and return a dictionary of parameters.
+
+    Args:
+        nni_mode (str): The mode for NNI (Neural Network Intelligence) optimization.
+
+    Returns:
+        dict: A dictionary containing the defined parameters.
+    """
     params = {
         # umap parameters
         "umap_n_components": 40,
@@ -151,7 +171,24 @@ def create_umap_projection(
     learning_rate: float,
     init: str,
     random_state: int,
-    )-> (cuml.UMAP, np.ndarray):
+    )-> Tuple[cuml.UMAP, np.ndarray]:
+    """
+    Create a UMAP projection of the given embedding data.
+
+    Args:
+        embedding_data (np.ndarray): The input embedding data.
+        n_components (int): The number of dimensions in the projected space.
+        n_neighbors (int): The number of nearest neighbors to consider for each point.
+        min_distance (float): The minimum distance between points in the projected space.
+        spread (float): The effective scale of embedded points.
+        learning_rate (float): The learning rate for the optimization process.
+        init (str): The initialization method for the embedding.
+        random_state (int): The random seed for reproducibility.
+
+    Returns:
+        tuple: A tuple containing the UMAP mapper object and the projected data.
+    """
+
     mapper = cuml.UMAP(
         n_neighbors=n_neighbors,
         n_components=n_components,
@@ -175,7 +212,25 @@ def find_clusters(
         cluster_selection_method,
         metric: str,
         alpha: float
-):
+)-> Tuple[cuml.HDBSCAN, np.ndarray]:
+    """
+    Find clusters in the given projected data using HDBSCAN.
+
+    Args:
+        projection_data (np.ndarray): The projected data.
+        min_cluster_size (int): The minimum number of samples required for a cluster.
+        min_samples (int): The number of samples in a neighborhood for a point to be considered a core point.
+        max_cluster_size (int): The maximum size of a cluster.
+        cluster_selection_epsilon (float): The radius of the epsilon neighborhood for cluster selection.
+        p (int): The power parameter for Minkowski distance metric.
+        cluster_selection_method (str): The method used to select clusters.
+        metric (str): The distance metric used for clustering.
+        alpha (float): The alpha parameter for the robust single linkage algorithm.
+
+    Returns:
+        tuple: A tuple containing the HDBSCAN clusterer object and the cluster labels.
+    """
+
     clusterer = cuml.HDBSCAN(
         min_cluster_size=min_cluster_size,
         min_samples=min_samples,
@@ -192,12 +247,20 @@ def find_clusters(
 
 def assess_clustering_results(clusters_labels,
                               clustered_data: np.ndarray,
-                              params: Dict) -> Dict:
+                              params: Dict,
+                              true_labels: Optional[pd.Series]=None) -> Dict:
     results = {}
     results['validity_index'] = hdbscan.validity_index(
         clustered_data.astype('float64'), labels=cluster_labels, metric=params['hdbs_metric'])
     results["calinski_harabasz_score"] = mt.calinski_harabasz_score(X=clustered_data, labels=clusters_labels)
     results["davies_bouldin_score"]= mt.davies_bouldin_score(X=clustered_data, labels=clusters_labels)
+
+    # if true labels is provided, we can compute supervised ccores
+    if true_labels is not None :
+        results['RAND score']= mt.rand_score(
+            labels_true = true_labels, labels_pred=clusters_labels)
+        results['Completness score']=mt.cluster.completeness_score(true_labels, clusters_labels)
+        results['Homogeneity score']=mt.cluster.homogeneity_score(true_labels, clusters_labels)
     return results
 
 
@@ -224,15 +287,19 @@ if __name__ == '__main__':
 
     with wandb.init(project=run_settings["WANDB_EXPERIMENT"], name=WANDB_RUN_NAME, save_code=False,
                     config =run_config) as run:
+        # load source data
+        texts, true_labels = load_source_data(
+            text_datafile=run_settings["TEXT_DATAFILE"],
+            text_column=run_settings["TEXT_FIELDNAME"],
+            true_label_column=run_settings['GROUND_TRUTH_FIELDNAME'],
+            limit_to_fraction=run_settings["LIMIT_DATA_FRACTION"])
 
         # create embeddings
         embeds = build_embeddings_dataset(
-            text_datafile=run_settings["TEXT_DATAFILE"],
-            text_fieldname=run_settings["TEXT_FIELDNAME"],
+            text_data = texts,
             model_path=run_settings["MODEL_PATH"],
             model_filename=run_settings["MODEL_NAME"],
-            embeddings_output_filename=EMBEDDINGS_DATA_FILENAME,
-            limit_to_fraction=run_settings["LIMIT_DATA_FRACTION"])
+            embeddings_output_filename=EMBEDDINGS_DATA_FILENAME)
         print(f'Embeddings data dimensionality: {embeds.shape}')
 
         # create projection
@@ -250,8 +317,14 @@ if __name__ == '__main__':
         print(f'Projection data dimensionality: {projection_data.shape}')
 
         # compute metrics
-        clu_metrics =assess_clustering_results(clusters_labels=cluster_labels, clustered_data=projection_data,
-                                  params=params)
+
+        if run_settings['GROUND_TRUTH_FIELDNAME'] :
+            clu_metrics = assess_clustering_results(
+                clusters_labels=cluster_labels, clustered_data=projection_data, params=params,
+                true_labels=true_labels)
+        else:
+            clu_metrics =assess_clustering_results(
+                clusters_labels=cluster_labels, clustered_data=projection_data, params=params)
 
         # finalize results dict
         results = {
@@ -261,6 +334,7 @@ if __name__ == '__main__':
             "ooc_fraction": len([x for x in cluster_labels if x<0])/len(cluster_labels),
         }
         results = {**clu_metrics, **results}
+        print(json.dumps(results, indent=3))
         if NNI_EXP_ID != NNI_DISABLED:
             nni_results={**{'default': results['validity_index']}}
             nni.report_final_result(nni_results)
