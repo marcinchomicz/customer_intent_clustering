@@ -40,6 +40,9 @@ def parse_arguments():
     parser.add_argument("--MODEL_PATH", default="/mnt/Data2/pretrained_models/nlp_models/sentence/")
     parser.add_argument("--MODEL_NAME", default="all-mpnet-base-v2")
     parser.add_argument("--WANDB_EXPERIMENT", default="CIC_working")
+    parser.add_argument("--PROJECTOR", default="none")
+    parser.add_argument("--CLUSTERER", default="none")
+
 
     # Parse the command line arguments
     args = parser.parse_args()
@@ -53,7 +56,9 @@ def parse_arguments():
         "LIMIT_DATA_FRACTION": args.LIMIT_DATA_FRACTION,
         "MODEL_PATH": args.MODEL_PATH,
         "MODEL_NAME": args.MODEL_NAME,
-        "WANDB_EXPERIMENT": args.WANDB_EXPERIMENT
+        "WANDB_EXPERIMENT": args.WANDB_EXPERIMENT,
+        "PROJECTOR": args.PROJECTOR,
+        "CLUSTERER": args.CLUSTERER
     }
 
     return settings
@@ -362,6 +367,8 @@ if __name__ == '__main__':
             "n_clusters": len(set([x for x in cluster_labels if x>=0])),
             "ooc_count": len([x for x in cluster_labels if x<0]),
             "ooc_fraction": len([x for x in cluster_labels if x<0])/len(cluster_labels),
+            "projector": run_settings["PROJECTOR"],
+            "clusterer": run_settings["CLUSTERER"]
         }
         results = {**clu_metrics, **results}
         print(json.dumps(results, indent=3))
