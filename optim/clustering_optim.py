@@ -313,7 +313,8 @@ if __name__ == '__main__':
     print(json.dumps(params, indent=3))
 
     run_config = {**params,
-                  **{'model': run_settings["MODEL_NAME"]}}
+                  **{'model': run_settings["MODEL_NAME"],
+                     'nni_exp': NNI_EXP_ID, 'nni_trial': NNI_RUN_ID, 'nni_seq': NNI_SEQ_ID}}
 
     with wandb.init(project=run_settings["WANDB_EXPERIMENT"], name=WANDB_RUN_NAME, save_code=False,
                     config =run_config) as run:
@@ -358,7 +359,6 @@ if __name__ == '__main__':
 
         # finalize results dict
         results = {
-            "trial_number": NNI_SEQ_ID,
             "n_clusters": len(set([x for x in cluster_labels if x>=0])),
             "ooc_count": len([x for x in cluster_labels if x<0]),
             "ooc_fraction": len([x for x in cluster_labels if x<0])/len(cluster_labels),
